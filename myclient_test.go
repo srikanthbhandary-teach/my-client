@@ -1,55 +1,51 @@
-package myclient
+package client_test
 
 import (
-	"fmt"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	client "github.com/srikanthbhandary-teach/my-client"
+	"github.com/stretchr/testify/assert"
 )
 
-type MyInfo struct {
-	ID   string `json:"number"`
-	Name string `json:"name"`
-	Age  int    `json:"age"`
-}
-
-func setupMockServer(handler http.HandlerFunc) *httptest.Server {
+func setupTestServer(handler http.Handler) *httptest.Server {
 	return httptest.NewServer(handler)
 }
 
-func TestClient_CreateMyInfo(t *testing.T) {
-	tests := []struct {
-		id, name string
-		age      int
-		expected int
-	}{
-		{"1", "Alice", 30, http.StatusOK},
-		{"2", "Bob", 25, http.StatusOK},
-		// Add more test cases as needed
+func createClientForTest(serverURL string) *client.Client {
+	return client.NewClient(serverURL, "test-api-key")
+}
+
+func TestGetMyInfo(t *testing.T) {
+	info := client.MyInfo{
+		ID:   "1",
+		Name: "Alice",
+		Age:  30,
 	}
 
-	for _, test := range tests {
-		t.Run(fmt.Sprintf("id=%s name=%s age=%d", test.id, test.name, test.age), func(t *testing.T) {
-			mockServer := setupMockServer(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method != http.MethodPost {
-					http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-					return
-				}
-				w.WriteHeader(http.StatusOK) // Use StatusOK for simplicity in this example
-			})
-			defer mockServer.Close()
+	infoJSON, err := json.Marshal(info)
+	assert.NoError(t, err)
 
-			client := NewClient("mock-api-key")
-			baseURL = mockServer.URL
+	testServer := setupTestServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write(infoJSON)
+	}))
 
-			err := client.CreateMyInfo(test.id, test.name, test.age)
-			if err != nil {
-				t.Errorf("Expected no error, but got: %v", err)
-			}
+	defer testServer.Close()
 
-			if got, want := test.expected, http.StatusOK; got != want {
-				t.Errorf("Expected status code %d, got %d", want, got)
-			}
-		})
-	}
+	client := createClientForTest(testServer.URL)
+
+	// Test for a single MyInfo
+	myInfo, err := client.GetMyInfo("1")
+	assert.NoError(t, err)
+	assert.Len(t, myInfo, 1)
+	assert.Equal(t, info, myInfo[0])
+
+	// Test for an array of MyInfo
+	myInfoArray, err := client.GetMyInfo("all")
+	assert.NoError(t, err)
+	assert.Len(t, myInfoArray, 1)
+	assert.Equal(t, info, myInfoArray[0])
 }
